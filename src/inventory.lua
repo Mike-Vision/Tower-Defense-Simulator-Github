@@ -1,7 +1,7 @@
 -- inventory.lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Network = require(ReplicatedStorage.Shared.Modules.Network)
-local Cache = require(ReplicatedStorage.Client.Modules.Cache)
+local Cache = require(ReplicatedStorage.Shared.UI.Cache)
 local PlayerReplicator = require(ReplicatedStorage.Client.Modules.Replicators.PlayerReplicator)
 
 local InventoryModule = {}
