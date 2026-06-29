@@ -10,6 +10,8 @@ if success and result then
     
     -- Example of usage:
     -- getgenv().TDS.loadout = {"Shotgunner", "DJ Booth", "Warden"}
+    return result
 else
     warn("[TDS] Loader: Failed to load library from GitHub: " .. tostring(result))
 end
+
