@@ -1,7 +1,8 @@
 -- Host repository: Mike-Vision/Tower-Defense-Simulator-Github
 
 local success, result = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Mike-Vision/Tower-Defense-Simulator-Github/main/src/main.lua"))()
+    local url = "https://raw.githubusercontent.com/Mike-Vision/Tower-Defense-Simulator-Github/main/src/main.lua?t=" .. tostring(tick())
+    return loadstring(game:HttpGet(url))()
 end)
 
 if success and result then
