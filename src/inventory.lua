@@ -21,22 +21,23 @@ function InventoryModule.getOwnedTowers()
     return owned or {}
 end
 
--- Gets currently equipped towers (returns pvp and normal tables)
+-- Gets currently equipped towers (returns pvp and normal tables, waiting up to 5s if nil)
 function InventoryModule.getEquippedTowers()
-    local localData = PlayerReplicator.GetLocalPlayerRaw() or PlayerReplicator.GetLocalPlayer()
-    local pvpTowers = {}
-    local normalTowers = {}
+    local pvpCache = Cache("Equipped.PVPTroops")
+    local normalCache = Cache("Equipped.Troops")
     
-    if localData then
-        for _, t in ipairs(localData.EquippedPVPTowers or {}) do
-            table.insert(pvpTowers, t)
-        end
-        for _, t in ipairs(localData.EquippedTowers or {}) do
-            table.insert(normalTowers, t)
-        end
+    local pvpTowers = pvpCache:GetValue()
+    local normalTowers = normalCache:GetValue()
+    
+    local retries = 0
+    while (not pvpTowers or not normalTowers) and retries < 50 do
+        task.wait(0.1)
+        pvpTowers = pvpCache:GetValue()
+        normalTowers = normalCache:GetValue()
+        retries = retries + 1
     end
     
-    return pvpTowers, normalTowers
+    return pvpTowers or {}, normalTowers or {}
 end
 
 -- Swaps the loadout dynamically to match targetTowers
