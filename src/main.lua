@@ -19,8 +19,8 @@ end
 local inventory = loadModule("inventory")
 local TDS = {}
 
--- Method execution
-function TDS:Loadout(towersList)
+-- Private equip function
+local function equip(towersList)
     if type(towersList) ~= "table" then
         warn("[TDS] Invalid argument to Loadout. Expected table, got " .. type(towersList))
         return false
@@ -28,17 +28,24 @@ function TDS:Loadout(towersList)
     return inventory.equipLoadout(towersList)
 end
 
--- Alias for lowercase method call
-function TDS:loadout(towersList)
-    return self:Loadout(towersList)
-end
-
--- Metatable to support direct property assignment
+-- Metatable to support direct property assignment and method calls dynamically
 setmetatable(TDS, {
+    __index = function(tbl, key)
+        if key == "loadout" or key == "Loadout" then
+            return function(self, towersList)
+                -- Handle both TDS:loadout({...}) and TDS.loadout({...})
+                if type(self) == "table" and self ~= tbl then
+                    return equip(self)
+                end
+                return equip(towersList)
+            end
+        end
+        return nil
+    end,
     __newindex = function(tbl, key, value)
         if (key == "loadout" or key == "Loadout") and type(value) == "table" then
             task.spawn(function()
-                inventory.equipLoadout(value)
+                equip(value)
             end)
         else
             rawset(tbl, key, value)
