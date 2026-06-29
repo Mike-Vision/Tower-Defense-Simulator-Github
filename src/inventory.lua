@@ -8,20 +8,22 @@ local InventoryModule = {}
 
 local invChannel = Network.Channel("Inventory")
 
--- Gets owned towers lookup table (waits up to 5s if not loaded yet)
+-- Gets owned towers lookup table (waits until loaded)
 function InventoryModule.getOwnedTowers()
     local cache = Cache("Inventory.Troops")
     local owned = cache:GetValue()
-    local retries = 0
-    while not owned and retries < 50 do
-        task.wait(0.1)
-        owned = cache:GetValue()
-        retries = retries + 1
+    if not owned then
+        print("[TDS] Waiting for owned towers cache to load...")
+        while not owned do
+            task.wait(0.2)
+            owned = cache:GetValue()
+        end
+        print("[TDS] Owned towers cache loaded!")
     end
-    return owned or {}
+    return owned
 end
 
--- Gets currently equipped towers (returns pvp and normal tables, waiting up to 5s if nil)
+-- Gets currently equipped towers (returns pvp and normal tables, waits until loaded)
 function InventoryModule.getEquippedTowers()
     local pvpCache = Cache("Equipped.PVPTroops")
     local normalCache = Cache("Equipped.Troops")
@@ -29,12 +31,14 @@ function InventoryModule.getEquippedTowers()
     local pvpRaw = pvpCache:GetValue()
     local normalRaw = normalCache:GetValue()
     
-    local retries = 0
-    while (not pvpRaw or not normalRaw) and retries < 50 do
-        task.wait(0.1)
-        pvpRaw = pvpCache:GetValue()
-        normalRaw = normalCache:GetValue()
-        retries = retries + 1
+    if not pvpRaw or not normalRaw then
+        print("[TDS] Waiting for equipped towers cache to load...")
+        while not pvpRaw or not normalRaw do
+            task.wait(0.2)
+            pvpRaw = pvpCache:GetValue()
+            normalRaw = normalCache:GetValue()
+        end
+        print("[TDS] Equipped towers cache loaded!")
     end
     
     local pvpTowers = {}
