@@ -8,15 +8,21 @@ local InventoryModule = {}
 
 local invChannel = Network.Channel("Inventory")
 
--- Gets owned towers lookup table
+-- Gets owned towers lookup table (yields if not loaded yet)
 function InventoryModule.getOwnedTowers()
-    local owned = Cache("Inventory.Troops"):GetValue()
+    local cache = Cache("Inventory.Troops")
+    local owned = cache:GetValue()
+    if not owned then
+        pcall(function()
+            owned = cache:Get():await()
+        end)
+    end
     return owned or {}
 end
 
 -- Gets currently equipped towers (returns pvp and normal tables)
 function InventoryModule.getEquippedTowers()
-    local localData = PlayerReplicator.GetLocalPlayerRaw()
+    local localData = PlayerReplicator.GetLocalPlayerRaw() or PlayerReplicator.GetLocalPlayer()
     local pvpTowers = {}
     local normalTowers = {}
     
