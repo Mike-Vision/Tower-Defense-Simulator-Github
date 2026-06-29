@@ -1,8 +1,23 @@
 -- Host repository: Mike-Vision/Tower-Defense-Simulator-Github
 
+local HttpService = game:GetService("HttpService")
+
+local sha = "main"
+local successSha, commitInfo = pcall(function()
+    return game:HttpGet("https://api.github.com/repos/Mike-Vision/Tower-Defense-Simulator-Github/commits/main")
+end)
+
+if successSha and commitInfo then
+    local ok, data = pcall(HttpService.JSONDecode, HttpService, commitInfo)
+    if ok and data and data.sha then
+        sha = data.sha
+    end
+end
+
 local success, result = pcall(function()
-    local url = "https://raw.githubusercontent.com/Mike-Vision/Tower-Defense-Simulator-Github/main/src/main.lua?t=" .. tostring(tick())
-    return loadstring(game:HttpGet(url))()
+    local url = string.format("https://raw.githubusercontent.com/Mike-Vision/Tower-Defense-Simulator-Github/%s/src/main.lua", sha)
+    local content = game:HttpGet(url)
+    return loadstring(content)(sha)
 end)
 
 if success and result then
@@ -15,4 +30,3 @@ if success and result then
 else
     warn("[TDS] Loader: Failed to load library from GitHub: " .. tostring(result))
 end
-
