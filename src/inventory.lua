@@ -8,14 +8,15 @@ local InventoryModule = {}
 
 local invChannel = Network.Channel("Inventory")
 
--- Gets owned towers lookup table (yields if not loaded yet)
+-- Gets owned towers lookup table (waits up to 5s if not loaded yet)
 function InventoryModule.getOwnedTowers()
     local cache = Cache("Inventory.Troops")
     local owned = cache:GetValue()
-    if not owned then
-        pcall(function()
-            owned = cache:Get():await()
-        end)
+    local retries = 0
+    while not owned and retries < 50 do
+        task.wait(0.1)
+        owned = cache:GetValue()
+        retries = retries + 1
     end
     return owned or {}
 end
@@ -84,13 +85,13 @@ function InventoryModule.equipLoadout(targetTowers)
     local pvpUnequip, pvpEquip = getDiff(pvpCurrent, verifiedTargets)
     for _, tower in ipairs(pvpUnequip) do
         pcall(function()
-            invChannel:InvokeServer("Unequip", "pvptower", tower)
+            invChannel:InvokeServer("Unequip", "PVPTower", tower)
         end)
         task.wait(0.05)
     end
     for _, tower in ipairs(pvpEquip) do
         pcall(function()
-            invChannel:InvokeServer("Equip", "pvptower", tower)
+            invChannel:InvokeServer("Equip", "PVPTower", tower)
         end)
         task.wait(0.05)
     end
@@ -99,13 +100,13 @@ function InventoryModule.equipLoadout(targetTowers)
     local normalUnequip, normalEquip = getDiff(normalCurrent, verifiedTargets)
     for _, tower in ipairs(normalUnequip) do
         pcall(function()
-            invChannel:InvokeServer("Unequip", "tower", tower)
+            invChannel:InvokeServer("Unequip", "Tower", tower)
         end)
         task.wait(0.05)
     end
     for _, tower in ipairs(normalEquip) do
         pcall(function()
-            invChannel:InvokeServer("Equip", "tower", tower)
+            invChannel:InvokeServer("Equip", "Tower", tower)
         end)
         task.wait(0.05)
     end
