@@ -26,18 +26,28 @@ function InventoryModule.getEquippedTowers()
     local pvpCache = Cache("Equipped.PVPTroops")
     local normalCache = Cache("Equipped.Troops")
     
-    local pvpTowers = pvpCache:GetValue()
-    local normalTowers = normalCache:GetValue()
+    local pvpRaw = pvpCache:GetValue()
+    local normalRaw = normalCache:GetValue()
     
     local retries = 0
-    while (not pvpTowers or not normalTowers) and retries < 50 do
+    while (not pvpRaw or not normalRaw) and retries < 50 do
         task.wait(0.1)
-        pvpTowers = pvpCache:GetValue()
-        normalTowers = normalCache:GetValue()
+        pvpRaw = pvpCache:GetValue()
+        normalRaw = normalCache:GetValue()
         retries = retries + 1
     end
     
-    return pvpTowers or {}, normalTowers or {}
+    local pvpTowers = {}
+    for _, t in pairs(pvpRaw or {}) do
+        table.insert(pvpTowers, t)
+    end
+    
+    local normalTowers = {}
+    for _, t in pairs(normalRaw or {}) do
+        table.insert(normalTowers, t)
+    end
+    
+    return pvpTowers, normalTowers
 end
 
 -- Swaps the loadout dynamically to match targetTowers
