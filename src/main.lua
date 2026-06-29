@@ -37,7 +37,9 @@ end
 setmetatable(TDS, {
     __newindex = function(tbl, key, value)
         if (key == "loadout" or key == "Loadout") and type(value) == "table" then
-            inventory.equipLoadout(value)
+            task.spawn(function()
+                inventory.equipLoadout(value)
+            end)
         else
             rawset(tbl, key, value)
         end
