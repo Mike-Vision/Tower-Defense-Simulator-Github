@@ -57,11 +57,11 @@ local function place(self, towerName, x, y, z)
         return false, "RemoteFunction not found"
     end
     
-    local posStr = string.format("%f, %f, %f", targetX, targetY, targetZ)
-    local rotStr = "0, 0, 0, 1, -0, 0, 0, 1, -0, 0, 0, 1"
+    local posVal = Vector3.new(targetX, targetY, targetZ)
+    local rotVal = CFrame.new(0, 0, 0, 1, -0, 0, 0, 1, -0, 0, 0, 1)
     
     local success, result = pcall(function()
-        return rf:InvokeServer("Troops", "Place", { Rotation = rotStr, Position = posStr }, targetTower)
+        return rf:InvokeServer("Troops", "Place", { Rotation = rotVal, Position = posVal }, targetTower)
     end)
     return success, result
 end
