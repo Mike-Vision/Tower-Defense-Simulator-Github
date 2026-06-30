@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Non-blocking version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (FPS Activation Included)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -57,19 +57,10 @@ Tab:CreateDropdown({
    end,
 })
 
-Tab:CreateToggle({
-   Name = "Auto Shoot",
-   Info = "Automatically target and fire the Gatling Gun",
-   CurrentValue = false,
-   Flag = "AutoShoot_Toggle",
-   Callback = function(Value)
-      autoShootEnabled = Value
-   end,
-})
-
 -- Core Targeting & Firing Logic
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local npcsFolder = workspace:WaitForChild("NPCs")
+local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
 
 -- Helper to find active Gatling Gun tower owned by player
 local function getMyGatlingGun()
@@ -85,6 +76,31 @@ local function getMyGatlingGun()
     end
     return nil
 end
+
+Tab:CreateToggle({
+   Name = "Auto Shoot",
+   Info = "Automatically target and fire the Gatling Gun",
+   CurrentValue = false,
+   Flag = "AutoShoot_Toggle",
+   Callback = function(Value)
+      autoShootEnabled = Value
+      
+      -- Toggle FPS Mode on server when Auto Shoot status changes
+      task.spawn(function()
+          local myGatling = getMyGatlingGun()
+          if myGatling then
+              pcall(function()
+                  rf:InvokeServer("Troops", "Abilities", "Activate", { 
+                      Troop = myGatling, 
+                      Name = "FPS", 
+                      Data = { enabled = autoShootEnabled } 
+                  })
+              end)
+              print("[TDS] AutoShoot: Toggled FPS Mode to " .. tostring(autoShootEnabled))
+          end
+      end)
+   end,
+})
 
 -- Helper to calculate target ordering based on targetMode
 local function getTargets()
