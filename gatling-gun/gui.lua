@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (With Thread Cleanup)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Fully integrated targeting)
 
 local HttpService = game:GetService("HttpService")
 
@@ -77,6 +77,7 @@ Tab:CreateDropdown({
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local npcsFolder = workspace:WaitForChild("NPCs")
 local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
+local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators")
 
 -- Helper to find active Gatling Gun tower owned by player
 local function getMyGatlingGun()
@@ -119,20 +120,49 @@ Tab:CreateToggle({
    end,
 })
 
+-- Helper to retrieve State Attributes (Health, PathDistance) of an NPC model
+local function getNPCState(npcModel)
+    -- Method A: via RootPointer
+    local rootPointer = npcModel:FindFirstChild("RootPointer")
+    if rootPointer and rootPointer.Value then
+        local rep = rootPointer.Value
+        local hp = rep:GetAttribute("Health") or 0
+        local dist = rep:GetAttribute("PathDistance") or 0
+        return hp, dist
+    end
+    
+    -- Method B: fallback scan target values
+    for _, rep in ipairs(stateReplicators:GetChildren()) do
+        if rep.Name == "NPCReplicator" then
+            local targetVal = rep:FindFirstChild("Target")
+            if targetVal and targetVal.Value == npcModel then
+                local hp = rep:GetAttribute("Health") or 0
+                local dist = rep:GetAttribute("PathDistance") or 0
+                return hp, dist
+            end
+        end
+    end
+    
+    return 0, 0
+end
+
 -- Helper to calculate target ordering based on targetMode
 local function getTargets()
     local targets = {}
     for _, npc in ipairs(npcsFolder:GetChildren()) do
-        local hpPart = npc:FindFirstChild("HumanoidRootPart")
-        local healthVal = npc:FindFirstChild("Health") or npc:FindFirstChild("HealthValue")
-        if hpPart and (not healthVal or healthVal.Value > 0) then
-            local progress = npc:GetAttribute("Progress") or 0
-            table.insert(targets, {
-                Instance = npc,
-                Position = hpPart.Position,
-                Health = healthVal and healthVal.Value or 1,
-                Progress = progress
-            })
+        -- Only target models that have a Hitbox or HumanoidRootPart
+        local hpPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Hitbox")
+        if hpPart then
+            local hp, progress = getNPCState(npc)
+            -- Ignore dead targets if health is known to be <= 0
+            if hp > 0 or (hp == 0 and progress == 0) then
+                table.insert(targets, {
+                    Instance = npc,
+                    Position = hpPart.Position,
+                    Health = hp,
+                    Progress = progress
+                })
+            end
         end
     end
     
