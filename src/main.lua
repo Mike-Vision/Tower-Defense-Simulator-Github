@@ -1,10 +1,10 @@
 -- main.lua
--- Entry point for TDS Loadout Library hosted on Mike-Vision/Tower-Defense-Simulator-Github
+-- Entry point for TDS Loadout Library hosted on Mike-vision/Tower-Defense-Simulator-Github
 
 local sha = ... or "main"
 
 local function loadModule(name)
-    local url = string.format("https://raw.githubusercontent.com/Mike-Vision/Tower-Defense-Simulator-Github/%s/src/%s.lua", sha, name)
+    local url = string.format("https://raw.githubusercontent.com/Mike-vision/Tower-Defense-Simulator-Github/%s/src/%s.lua", sha, name)
     local success, content = pcall(game.HttpGet, game, url)
     if not success or not content then
         error("[TDS] Failed to fetch module online: " .. name .. " from " .. url)

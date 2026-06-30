@@ -1,10 +1,10 @@
--- Host repository: Mike-Vision/Tower-Defense-Simulator-Github
+-- Host repository: Mike-vision/Tower-Defense-Simulator-Github
 
 local HttpService = game:GetService("HttpService")
 
 local sha = "main"
 local successSha, commitInfo = pcall(function()
-    return game:HttpGet("https://api.github.com/repos/Mike-Vision/Tower-Defense-Simulator-Github/commits/main")
+    return game:HttpGet("https://api.github.com/repos/Mike-vision/Tower-Defense-Simulator-Github/commits/main")
 end)
 
 if successSha and commitInfo then
@@ -15,7 +15,7 @@ if successSha and commitInfo then
 end
 
 local success, result = pcall(function()
-    local url = string.format("https://raw.githubusercontent.com/Mike-Vision/Tower-Defense-Simulator-Github/%s/src/main.lua", sha)
+    local url = string.format("https://raw.githubusercontent.com/Mike-vision/Tower-Defense-Simulator-Github/%s/src/main.lua", sha)
     local content = game:HttpGet(url)
     return loadstring(content)(sha)
 end)
