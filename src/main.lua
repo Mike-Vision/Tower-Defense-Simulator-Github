@@ -113,9 +113,11 @@ local function place(self, towerName, x, y, z)
     local posVal = Vector3.new(finalX, finalY, finalZ)
     local rotVal = CFrame.new(0, 0, 0, 1, -0, 0, 0, 1, -0, 0, 0, 1)
     
-    local result = rf:InvokeServer("Troops", "Place", { Rotation = rotVal, Position = posVal }, targetTower)
+    local success, result = pcall(function()
+        return rf:InvokeServer("Troops", "Place", { Rotation = rotVal, Position = posVal }, targetTower)
+    end)
     
-    if type(result) == "string" and result ~= "You cannot place here!" and result ~= "You do not have this tower equipped!" then
+    if success and type(result) == "string" and result ~= "You cannot place here!" and result ~= "You do not have this tower equipped!" then
         -- Wait a short time for the model to replicate to workspace.Towers
         local placedTowerInstance = nil
         for i = 1, 10 do
@@ -130,7 +132,7 @@ local function place(self, towerName, x, y, z)
         print(string.format("[TDS] Placed %s successfully. Registered to Index: %d", tostring(targetTower), newIndex))
     end
     
-    return true, result
+    return success, result
 end
 
 -- Private upgrade function with auto wait loop for cash
@@ -171,18 +173,25 @@ local function upgrade(self, index, path)
             return false, "Tower destroyed"
         end
         
-        local result = rf:InvokeServer("Troops", "Upgrade", "Set", { Troop = towerInstance, Path = targetPath })
+        local success, result = pcall(function()
+            return rf:InvokeServer("Troops", "Upgrade", "Set", { Troop = towerInstance, Path = targetPath })
+        end)
         
-        if result == true or result == "Max level reached" then
-            print(string.format("[TDS] Successfully upgraded Tower Index %d to next level!", targetIndex))
-            return true, result
-        elseif type(result) == "string" and string.find(result:lower(), "enough money") then
-            -- Not enough money, wait 0.5s and retry
-            task.wait(0.5)
+        if success then
+            if result == true or result == "Max level reached" then
+                print(string.format("[TDS] Successfully upgraded Tower Index %d to next level!", targetIndex))
+                return true, result
+            elseif type(result) == "string" and string.find(result:lower(), "enough money") then
+                -- Not enough money, wait 0.5s and retry
+                task.wait(0.5)
+            else
+                -- Other error (e.g. max level or target invalid), log and exit loop to prevent infinite hang
+                warn(string.format("[TDS] Upgrade failed: %s. Exiting loop.", tostring(result)))
+                return false, result
+            end
         else
-            -- Other error (e.g. max level or target invalid), log and exit loop to prevent infinite hang
-            warn(string.format("[TDS] Upgrade failed: %s. Exiting loop.", tostring(result)))
-            return false, result
+            warn(string.format("[TDS] Remote call failed: %s. Retrying in 1s...", tostring(result)))
+            task.wait(1.0)
         end
     end
 end
