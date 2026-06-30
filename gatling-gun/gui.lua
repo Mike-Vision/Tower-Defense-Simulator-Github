@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Fully integrated targeting)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Flags and formatting optimized)
 
 local HttpService = game:GetService("HttpService")
 
@@ -29,13 +29,7 @@ getgenv().GatlingWindow = Window
 
 local Tab = Window:CreateTab("Gatling Automation", 4483362458) -- Title, ImageID
 
--- Control variables
-local bpsValue = 10
-local multiTargetLimit = 1
-local targetMode = "First"
-local autoShootEnabled = false
-
--- UI Elements
+-- UI Elements with Flags
 Tab:CreateSlider({
    Name = "Bullet Per Second (BPS)",
    Info = "Sets the firing speed (1 - 26)",
@@ -44,9 +38,7 @@ Tab:CreateSlider({
    Suffix = "bullets/s",
    CurrentValue = 10,
    Flag = "BPS_Slider",
-   Callback = function(Value)
-      bpsValue = Value
-   end,
+   Callback = function(Value) end,
 })
 
 Tab:CreateSlider({
@@ -57,9 +49,7 @@ Tab:CreateSlider({
    Suffix = "targets",
    CurrentValue = 1,
    Flag = "MultiTarget_Slider",
-   Callback = function(Value)
-      multiTargetLimit = Value
-   end,
+   Callback = function(Value) end,
 })
 
 Tab:CreateDropdown({
@@ -68,9 +58,7 @@ Tab:CreateDropdown({
    CurrentValue = "First",
    MultipleOptions = false,
    Flag = "Targeting_Dropdown",
-   Callback = function(Option)
-      targetMode = Option[1] or Option
-   end,
+   Callback = function(Option) end,
 })
 
 -- Core Targeting & Firing Logic
@@ -101,8 +89,6 @@ Tab:CreateToggle({
    CurrentValue = false,
    Flag = "AutoShoot_Toggle",
    Callback = function(Value)
-      autoShootEnabled = Value
-      
       -- Toggle FPS Mode on server when Auto Shoot status changes
       task.spawn(function()
           local myGatling = getMyGatlingGun()
@@ -111,10 +97,10 @@ Tab:CreateToggle({
                   rf:InvokeServer("Troops", "Abilities", "Activate", { 
                       Troop = myGatling, 
                       Name = "FPS", 
-                      Data = { enabled = autoShootEnabled } 
+                      Data = { enabled = Value } 
                   })
               end)
-              print("[TDS] AutoShoot: Toggled FPS Mode to " .. tostring(autoShootEnabled))
+              print("[TDS] AutoShoot: Toggled FPS Mode to " .. tostring(Value))
           end
       end)
    end,
@@ -122,7 +108,6 @@ Tab:CreateToggle({
 
 -- Helper to retrieve State Attributes (Health, PathDistance) of an NPC model
 local function getNPCState(npcModel)
-    -- Method A: via RootPointer
     local rootPointer = npcModel:FindFirstChild("RootPointer")
     if rootPointer and rootPointer.Value then
         local rep = rootPointer.Value
@@ -131,7 +116,6 @@ local function getNPCState(npcModel)
         return hp, dist
     end
     
-    -- Method B: fallback scan target values
     for _, rep in ipairs(stateReplicators:GetChildren()) do
         if rep.Name == "NPCReplicator" then
             local targetVal = rep:FindFirstChild("Target")
@@ -147,14 +131,13 @@ local function getNPCState(npcModel)
 end
 
 -- Helper to calculate target ordering based on targetMode
-local function getTargets()
+local function getTargets(mode)
     local targets = {}
     for _, npc in ipairs(npcsFolder:GetChildren()) do
-        -- Only target models that have a Hitbox or HumanoidRootPart
         local hpPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Hitbox")
         if hpPart then
             local hp, progress = getNPCState(npc)
-            -- Ignore dead targets if health is known to be <= 0
+            -- If health/progress state couldn't be loaded, default to allowing it
             if hp > 0 or (hp == 0 and progress == 0) then
                 table.insert(targets, {
                     Instance = npc,
@@ -166,13 +149,13 @@ local function getTargets()
         end
     end
     
-    if targetMode == "First" then
+    if mode == "First" then
         table.sort(targets, function(a, b) return a.Progress > b.Progress end)
-    elseif targetMode == "Last" then
+    elseif mode == "Last" then
         table.sort(targets, function(a, b) return a.Progress < b.Progress end)
-    elseif targetMode == "Strongest" then
+    elseif mode == "Strongest" then
         table.sort(targets, function(a, b) return a.Health > b.Health end)
-    elseif targetMode == "Random" then
+    elseif mode == "Random" then
         local rng = Random.new()
         for i = #targets, 2, -1 do
             local j = rng:NextInteger(1, i)
@@ -197,7 +180,29 @@ task.spawn(function()
     local seqNum = 1
     local lastWarn = 0
     while getgenv().GatlingScriptID == currentScriptID do
-        if autoShootEnabled then
+        -- Read values dynamically from Rayfield Flags
+        local autoShoot = false
+        local bps = 10
+        local multiLimit = 1
+        local mode = "First"
+        
+        pcall(function()
+            if Rayfield.Flags["AutoShoot_Toggle"] then
+                autoShoot = Rayfield.Flags["AutoShoot_Toggle"].CurrentValue
+            end
+            if Rayfield.Flags["BPS_Slider"] then
+                bps = Rayfield.Flags["BPS_Slider"].CurrentValue
+            end
+            if Rayfield.Flags["MultiTarget_Slider"] then
+                multiLimit = Rayfield.Flags["MultiTarget_Slider"].CurrentValue
+            end
+            if Rayfield.Flags["Targeting_Dropdown"] then
+                local opt = Rayfield.Flags["Targeting_Dropdown"].CurrentValue
+                mode = type(opt) == "table" and opt[1] or opt or "First"
+            end
+        end)
+        
+        if autoShoot then
             local myGatling = getMyGatlingGun()
             if myGatling then
                 local gatlingNetwork = getGatlingNetwork()
@@ -206,14 +211,15 @@ task.spawn(function()
                     local ureAim = gatlingNetwork:FindFirstChild("URE:ReplicateAimPosition")
                     
                     if reFire and ureAim then
-                        local targetsList = getTargets()
+                        local targetsList = getTargets(mode)
                         local count = 0
                         
                         for _, target in ipairs(targetsList) do
-                            if count >= multiTargetLimit then break end
+                            if count >= multiLimit then break end
                             
                             local targetPos = target.Position
-                            local targetPosStr = string.format("%f, %f, %f", targetPos.X, targetPos.Y, targetPos.Z)
+                            -- Roblox standard vector string representation (e.g. "X, Y, Z")
+                            local targetPosStr = tostring(targetPos)
                             local timestamp = workspace:GetServerTimeNow()
                             
                             -- 1. Replicate aim direction for nòng súng
@@ -243,7 +249,7 @@ task.spawn(function()
                 end
             end
         end
-        task.wait(1 / bpsValue)
+        task.wait(1 / bps)
     end
     print("[TDS] Gatling Gun Old Thread (ID: " .. currentScriptID .. ") Stopped.")
 end)
