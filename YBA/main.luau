@@ -12,7 +12,7 @@ getgenv().YBAScriptID = scriptID
 
 -- 1. Orion Library Initialization
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "YBA Automation Hub", HidePremium = false, SaveConfig = true, ConfigFolder = "OrionYBA"})
+local Window = OrionLib:MakeWindow({Name = "YBA Automation Hub", HidePremium = true, SaveConfig = false})
 
 local MainTab = Window:MakeTab({
 	Name = "Main",
