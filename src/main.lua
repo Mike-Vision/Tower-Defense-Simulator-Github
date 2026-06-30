@@ -57,7 +57,31 @@ local function place(self, towerName, x, y, z)
         return false, "RemoteFunction not found"
     end
     
-    local posVal = Vector3.new(targetX, targetY, targetZ)
+    -- Check if there is already a tower close to this position to decide if we need to stack
+    local needStack = false
+    for _, tower in ipairs(workspace.Towers:GetChildren()) do
+        if tower.PrimaryPart then
+            local dist = (tower.PrimaryPart.Position - Vector3.new(targetX, tower.PrimaryPart.Position.Y, targetZ)).Magnitude
+            if dist < 2.5 then
+                needStack = true
+                break
+            end
+        end
+    end
+    
+    local finalX = targetX
+    local finalY = targetY
+    local finalZ = targetZ
+    
+    if needStack then
+        -- Apply the golden stacking bypass parameters:
+        -- Y is offset by +1.05 studs to skip the server's HEIGHT checks.
+        -- X is shifted by +0.1 stud to slide the server's down-raycast around the existing hitbox.
+        finalX = targetX + 0.1
+        finalY = targetY + 1.05
+    end
+    
+    local posVal = Vector3.new(finalX, finalY, finalZ)
     local rotVal = CFrame.new(0, 0, 0, 1, -0, 0, 0, 1, -0, 0, 0, 1)
     
     local success, result = pcall(function()
