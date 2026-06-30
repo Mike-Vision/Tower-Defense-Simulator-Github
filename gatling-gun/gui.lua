@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Silent Aim / Mouse Hook version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Safe Mouse Metatable Hooking version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -184,27 +184,38 @@ local function getTargets(mode)
     return targets
 end
 
--- Silent Aim (Mouse Hooking)
--- Overrides Mouse.Hit and Mouse.Target to return the current target's position
+-- Silent Aim (Target Tracking Variable)
 local currentTarget = nil
 
-local rawIndex
-rawIndex = hookmetamethod(game, "__index", function(self, key)
-    if not checkcaller() and autoShootEnabled and currentTarget and currentTarget.Parent then
-        -- Hook LocalPlayer Mouse Hit position
-        if self == mouse and key == "Hit" then
-            local hitBox = currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
-            if hitBox then
-                -- Target chest/head height
-                return CFrame.new(hitBox.Position + Vector3.new(0, 1.5, 0))
-            end
-        end
-        -- Hook LocalPlayer Mouse Target instance
-        if self == mouse and key == "Target" then
-            return currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+-- Safe Mouse Metatable Hooking
+pcall(function()
+    local mouseMT = getrawmetatable(mouse)
+    if mouseMT and mouseMT.__index then
+        local rawIndex = mouseMT.__index
+        
+        -- Hook only if not already hooked by our script
+        if not getgenv().GatlingMouseHooked then
+            getgenv().GatlingMouseHooked = true
+            setreadonly(mouseMT, false)
+            
+            mouseMT.__index = newcclosure(function(self, key)
+                if autoShootEnabled and currentTarget and currentTarget.Parent then
+                    if key == "Hit" then
+                        local hitBox = currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+                        if hitBox then
+                            return CFrame.new(hitBox.Position + Vector3.new(0, 1.5, 0))
+                        end
+                    elseif key == "Target" then
+                        return currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+                    end
+                end
+                return rawIndex(self, key)
+            end)
+            
+            setreadonly(mouseMT, true)
+            print("[TDS] Safe Mouse Metatable Hooked Successfully!")
         end
     end
-    return rawIndex(self, key)
 end)
 
 -- Dynamic connection getter to prevent infinite yield
@@ -233,24 +244,23 @@ task.spawn(function()
                         local targetsList = getTargets(targetMode)
                         
                         if #targetsList > 0 then
-                            -- Set the current target for the Mouse Hook to capture
+                            -- Set the current target for the Mouse Hook
                             currentTarget = targetsList[1].Instance
                             
                             local count = 0
                             for _, target in ipairs(targetsList) do
                                 if count >= multiTargetLimit then break end
                                 
-                                -- Aim slightly higher (head/chest level)
                                 local targetPos = target.Position + Vector3.new(0, 1.5, 0)
                                 local targetPosStr = tostring(targetPos)
                                 local timestamp = workspace:GetServerTimeNow()
                                 
-                                -- 1. Replicate aim direction to keep server model rotated correctly
+                                -- 1. Replicate aim direction for nòng súng
                                 pcall(function()
                                     ureAim:FireServer(targetPosStr)
                                 end)
                                 
-                                -- 2. Call fire bullet remote
+                                -- 2. Fire bullet event
                                 pcall(function()
                                     reFire:FireServer(targetPosStr, seqNum, timestamp)
                                 end)
