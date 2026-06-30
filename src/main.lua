@@ -19,7 +19,9 @@ local function loadModule(name)
 end
 
 local inventory = loadModule("inventory")
-local TDS = {}
+local TDS = {
+    PlacedTowers = {}
+}
 
 -- Private equip function
 local function equip(towersList)
@@ -28,6 +30,33 @@ local function equip(towersList)
         return false
     end
     return inventory.equipLoadout(towersList)
+end
+
+-- Helper to find the newest tower in workspace.Towers that matches the placed type and position
+local function findNewestTower(towerTypeName, position, maxDistance)
+    local bestTower = nil
+    local bestDist = maxDistance or 1.0
+    for _, tower in ipairs(workspace.Towers:GetChildren()) do
+        -- Check if it matches the expected internal representation of the tower type
+        if tower.PrimaryPart then
+            local dist = (tower.PrimaryPart.Position - position).Magnitude
+            if dist < bestDist then
+                -- Verify this tower is not already registered in our indexes
+                local alreadyRegistered = false
+                for _, registeredTower in pairs(TDS.PlacedTowers) do
+                    if registeredTower == tower then
+                        alreadyRegistered = true
+                        break
+                    end
+                end
+                if not alreadyRegistered then
+                    bestTower = tower
+                    bestDist = dist
+                end
+            end
+        end
+    end
+    return bestTower
 end
 
 -- Private place function
@@ -87,7 +116,84 @@ local function place(self, towerName, x, y, z)
     local success, result = pcall(function()
         return rf:InvokeServer("Troops", "Place", { Rotation = rotVal, Position = posVal }, targetTower)
     end)
+    
+    if success and type(result) == "string" and result ~= "You cannot place here!" and result ~= "You do not have this tower equipped!" then
+        -- Wait a short time for the model to replicate to workspace.Towers
+        local placedTowerInstance = nil
+        for i = 1, 10 do
+            placedTowerInstance = findNewestTower(result, posVal, 2.0)
+            if placedTowerInstance then break end
+            task.wait(0.05)
+        end
+        
+        -- Register to the next index
+        local newIndex = #TDS.PlacedTowers + 1
+        TDS.PlacedTowers[newIndex] = placedTowerInstance
+        print(string.format("[TDS] Placed %s successfully. Registered to Index: %d", tostring(targetTower), newIndex))
+    end
+    
     return success, result
+end
+
+-- Private upgrade function with auto wait loop for cash
+local function upgrade(self, index, path)
+    local targetIndex, targetPath
+    if type(self) == "table" then
+        targetIndex = index
+        targetPath = path or 1
+    else
+        targetIndex = self
+        targetPath = index or 1
+    end
+    
+    if type(targetIndex) ~= "number" then
+        warn("[TDS] Invalid arguments to Upgrade. Expected (index, path)")
+        return false, "Invalid arguments"
+    end
+    
+    local towerInstance = TDS.PlacedTowers[targetIndex]
+    if not towerInstance then
+        warn(string.format("[TDS] Tower at Index %d not found or not placed yet!", targetIndex))
+        return false, "Tower not found"
+    end
+    
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local rf = ReplicatedStorage:FindFirstChild("RemoteFunction")
+    if not rf then
+        warn("[TDS] RemoteFunction not found in ReplicatedStorage")
+        return false, "RemoteFunction not found"
+    end
+    
+    print(string.format("[TDS] Attempting to upgrade Tower Index %d along Path %d...", targetIndex, targetPath))
+    
+    while true do
+        -- Check if tower still exists in workspace
+        if not towerInstance.Parent then
+            warn(string.format("[TDS] Tower at Index %d was sold or destroyed. Exiting upgrade loop.", targetIndex))
+            return false, "Tower destroyed"
+        end
+        
+        local success, result = pcall(function()
+            return rf:InvokeServer("Troops", "Upgrade", "Set", { Troop = towerInstance, Path = targetPath })
+        end)
+        
+        if success then
+            if result == true or result == "Max level reached" then
+                print(string.format("[TDS] Successfully upgraded Tower Index %d to next level!", targetIndex))
+                return true, result
+            elseif type(result) == "string" and string.find(result:lower(), "enough money") then
+                -- Not enough money, wait 0.5s and retry
+                task.wait(0.5)
+            else
+                -- Other error (e.g. max level or target invalid), log and exit loop to prevent infinite hang
+                warn(string.format("[TDS] Upgrade failed: %s. Exiting loop.", tostring(result)))
+                return false, result
+            end
+        else
+            warn(string.format("[TDS] Remote call failed: %s. Retrying in 1s...", tostring(result)))
+            task.wait(1.0)
+        end
+    end
 end
 
 -- Metatable to support direct property assignment and method calls dynamically
@@ -95,7 +201,6 @@ setmetatable(TDS, {
     __index = function(tbl, key)
         if key == "loadout" or key == "Loadout" then
             return function(self, towersList)
-                -- Handle both TDS:loadout({...}) and TDS.loadout({...})
                 if type(self) == "table" and self ~= tbl then
                     return equip(self)
                 end
@@ -103,6 +208,8 @@ setmetatable(TDS, {
             end
         elseif key == "place" or key == "Place" then
             return place
+        elseif key == "upgrade" or key == "Upgrade" or key == "upg" or key == "Upg" then
+            return upgrade
         end
         return nil
     end,
