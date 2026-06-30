@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Direct Remote Firing - Clean Version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Universal Targeting version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -152,10 +152,12 @@ end
 local function getTargets(mode)
     local targets = {}
     for _, npc in ipairs(npcsFolder:GetChildren()) do
+        -- Matches any NPC model that has physical parts, avoiding marker objects like "Red" or "Blue"
         local hpPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Hitbox")
-        if hpPart then
+        if hpPart and npc.Name ~= "Red" and npc.Name ~= "Blue" then
             local hp, progress = getNPCState(npc)
-            if hp > 0 or (hp == 0 and progress == 0 and npc.Name == "Actor1Enemy") then
+            -- Allow targeting if health is active or if health is not loaded yet (fallback)
+            if hp > 0 or (hp == 0 and progress == 0) then
                 table.insert(targets, {
                     Instance = npc,
                     Position = hpPart.Position,
@@ -213,7 +215,6 @@ task.spawn(function()
                             for _, target in ipairs(targetsList) do
                                 if count >= multiTargetLimit then break end
                                 
-                                -- Aim slightly higher (head/chest level) to align the barrel properly
                                 local targetPos = target.Position + Vector3.new(0, 1.5, 0)
                                 local targetPosStr = tostring(targetPos)
                                 local timestamp = workspace:GetServerTimeNow()
