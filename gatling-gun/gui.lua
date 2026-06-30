@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Decompiled Logic Method)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Gatling State Active Version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -195,7 +195,13 @@ task.spawn(function()
             if myGatlingModel then
                 local rep = TowerReplicator.getTowerByModel(myGatlingModel)
                 if rep then
-                    -- 1. Check if súng hết đạn và cần Reload
+                    -- Force gạt các biến trạng thái bắn của tháp cục bộ để kích hoạt nòng súng xoay và xả đạn
+                    rep._firing = true
+                    rep._allowedToFire = true
+                    rep._FPSEnabled = true
+                    rep.CanFire = true
+                    
+                    -- Tự động Reload nếu hết đạn
                     if rep.Ammo and rep.Ammo <= 0 and not rep.Reloading then
                         print("[TDS] AutoShoot: Ammo empty. Triggering Reload...")
                         pcall(function()
@@ -214,18 +220,25 @@ task.spawn(function()
                             local targetPosStr = tostring(targetPos)
                             local timestamp = workspace:GetServerTimeNow()
                             
+                            -- Cập nhật góc hướng ngắm cục bộ (Visual CFrame rotation) để đầu súng xoay
+                            if rep._cframeData then
+                                pcall(function()
+                                    rep._cframeData.Position = targetPos
+                                end)
+                            end
+                            
                             -- Lấy điểm đầu nòng súng để vẽ tia đạn bay (VFX)
                             local barrel = myGatlingModel:FindFirstChild("Weapon") 
                                 and myGatlingModel.Weapon:FindFirstChild("Main") 
                                 and myGatlingModel.Weapon.Main:FindFirstChild("Barrel")
                             local startPos = barrel and barrel.Position or (myGatlingModel.PrimaryPart and myGatlingModel.PrimaryPart.Position + Vector3.new(0, 5, 0)) or targetPos
                             
-                            -- 2. Đồng bộ hướng ngắm xoay nòng súng cục bộ & server
+                            -- 1. Đồng bộ hướng ngắm lên Server
                             pcall(function()
                                 rep:FireServer("ReplicateAimPosition", targetPosStr)
                             end)
                             
-                            -- 3. Tạo hiệu ứng đạn bay cục bộ (Visual Bullet)
+                            -- 2. Tạo hiệu ứng đạn bay cục bộ (Visual Bullet)
                             pcall(function()
                                 if rep.Bullet then
                                     rep:Bullet({
@@ -236,7 +249,7 @@ task.spawn(function()
                                 end
                             end)
                             
-                            -- 4. Gửi yêu cầu bắn đạn lên Server qua kênh mã hóa gốc của tháp
+                            -- 3. Gửi yêu cầu bắn đạn thực tế lên Server qua kênh mã hóa
                             pcall(function()
                                 rep:FireServer("Fire", targetPosStr, seqNum, timestamp)
                             end)
