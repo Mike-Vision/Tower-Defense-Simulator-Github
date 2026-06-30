@@ -1,5 +1,19 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Non-blocking and Skin-agnostic version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (With Thread Cleanup)
+
+local HttpService = game:GetService("HttpService")
+
+-- 1. Clean up previous GUI if exists
+if getgenv().GatlingWindow then
+    pcall(function()
+        getgenv().GatlingWindow:Destroy()
+    end)
+    getgenv().GatlingWindow = nil
+end
+
+-- 2. Generate a unique ID for this execution thread to kill old loops
+local currentScriptID = HttpService:GenerateGUID(false)
+getgenv().GatlingScriptID = currentScriptID
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -10,6 +24,8 @@ local Window = Rayfield:CreateWindow({
    Theme = "Default",
    DisableRayfieldPrompts = false
 })
+
+getgenv().GatlingWindow = Window
 
 local Tab = Window:CreateTab("Gatling Automation", 4483362458) -- Title, ImageID
 
@@ -63,16 +79,13 @@ local npcsFolder = workspace:WaitForChild("NPCs")
 local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
 
 -- Helper to find active Gatling Gun tower owned by player
--- Matches "Gatling Gun", "Default", or any tower that might be the Gatling Gun based on typical structure
 local function getMyGatlingGun()
-    -- 1. Try to find by Owner tag and common names
     for _, tower in ipairs(workspace.Towers:GetChildren()) do
         local isOwner = tower:FindFirstChild("Owner") and tower.Owner.Value == game.Players.LocalPlayer.UserId
         if isOwner and (tower.Name == "Gatling Gun" or tower.Name == "Default") then
             return tower
         end
     end
-    -- 2. Fallback to any tower named "Default" or "Gatling Gun"
     for _, tower in ipairs(workspace.Towers:GetChildren()) do
         if tower.Name == "Gatling Gun" or tower.Name == "Default" then
             return tower
@@ -153,7 +166,7 @@ end
 task.spawn(function()
     local seqNum = 1
     local lastWarn = 0
-    while true do
+    while getgenv().GatlingScriptID == currentScriptID do
         if autoShootEnabled then
             local myGatling = getMyGatlingGun()
             if myGatling then
@@ -202,6 +215,7 @@ task.spawn(function()
         end
         task.wait(1 / bpsValue)
     end
+    print("[TDS] Gatling Gun Old Thread (ID: " .. currentScriptID .. ") Stopped.")
 end)
 
-print("[TDS] Gatling Gun Rayfield UI Loaded Successfully!")
+print("[TDS] Gatling Gun Rayfield UI Loaded Successfully! Thread ID: " .. currentScriptID)
