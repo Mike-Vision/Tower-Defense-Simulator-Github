@@ -1,5 +1,5 @@
 -- main.luau
--- Main script for YBA Automation utilizing Orion Library (ESP & Auto Farm)
+-- Main script for YBA Automation utilizing Orion Library (ESP, Auto Farm & Jesus TP)
 
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
@@ -23,6 +23,67 @@ local MainTab = Window:MakeTab({
 -- Feature States
 local espEnabled = false
 local autoFarmEnabled = false
+
+-- Status Label for Jesus Spawn
+local jesusStatusLabel = MainTab:AddLabel("Jesus Spawned: No")
+
+-- Loop to monitor Jesus Spawn state in real-time
+task.spawn(function()
+    while getgenv().YBAScriptID == scriptID do
+        local dialogues = workspace:FindFirstChild("Dialogues")
+        local jesus = dialogues and dialogues:FindFirstChild("Jesus")
+        if jesus then
+            jesusStatusLabel:Set("Jesus Spawned: Yes")
+        else
+            jesusStatusLabel:Set("Jesus Spawned: No")
+        end
+        task.wait(1)
+    end
+end)
+
+-- Button to Teleport to Jesus NPC
+MainTab:AddButton({
+	Name = "Teleport to Jesus",
+	Callback = function()
+		local dialogues = workspace:FindFirstChild("Dialogues")
+		local jesus = dialogues and dialogues:FindFirstChild("Jesus")
+		local jesusHRP = jesus and jesus:FindFirstChild("HumanoidRootPart")
+		
+		local character = localPlayer.Character
+		local myHRP = character and character:FindFirstChild("HumanoidRootPart")
+		local myHumanoid = character and character:FindFirstChildWhichIsA("Humanoid")
+		
+		if myHRP and myHumanoid and myHumanoid.Health > 0 then
+			if jesusHRP then
+				print("[YBA] Teleporting to Jesus...")
+				pcall(function()
+					-- Teleport slightly in front of Jesus facing him
+					myHRP.CFrame = jesusHRP.CFrame * CFrame.new(0, 0, -3) * CFrame.Angles(0, math.pi, 0)
+				end)
+				OrionLib:MakeNotification({
+					Name = "Teleport Success",
+					Content = "Teleported to Jesus NPC successfully!",
+					Image = "rbxassetid://4483345906",
+					Time = 3
+				})
+			else
+				OrionLib:MakeNotification({
+					Name = "Teleport Failed",
+					Content = "Jesus NPC is not spawned in this server!",
+					Image = "rbxassetid://4483345906",
+					Time = 4
+				})
+			end
+		else
+			OrionLib:MakeNotification({
+				Name = "Teleport Failed",
+				Content = "Your character is dead or not loaded!",
+				Image = "rbxassetid://4483345906",
+				Time = 3
+			})
+		end
+	end    
+})
 
 -- 2. ESP Players Feature (Highlight Method)
 local function applyESP(player)
