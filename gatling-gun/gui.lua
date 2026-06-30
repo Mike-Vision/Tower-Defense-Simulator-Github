@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Gatling State Active Version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Optimized Aim & Firing Version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -30,7 +30,7 @@ getgenv().GatlingWindow = Window
 local Tab = Window:CreateTab("Gatling Automation", 4483362458) -- Title, ImageID
 
 -- Control variables (Direct callback-driven state)
-local bpsValue = 10
+local bpsValue = 26
 local multiTargetLimit = 1
 local targetMode = "First"
 local autoShootEnabled = false
@@ -38,11 +38,11 @@ local autoShootEnabled = false
 -- UI Elements
 Tab:CreateSlider({
    Name = "Bullet Per Second (BPS)",
-   Info = "Sets the firing speed (1 - 26)",
+   Info = "Sets the firing speed limit (1 - 26)",
    Range = {1, 26},
    Increment = 1,
    Suffix = "bullets/s",
-   CurrentValue = 10,
+   CurrentValue = 26,
    Flag = "BPS_Slider",
    Callback = function(Value)
       bpsValue = Value
@@ -81,6 +81,7 @@ local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
 local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
+local mouse = localPlayer:GetMouse()
 
 -- Helper to find active Gatling Gun tower owned by player
 local function getMyGatlingGun()
@@ -183,6 +184,32 @@ local function getTargets(mode)
     return targets
 end
 
+-- Active tracking target variable for the Mouse Hook
+local currentTarget = nil
+
+-- Hook Mouse.Hit safely (Only once to prevent C stack overflow)
+pcall(function()
+    local mouseMT = getrawmetatable(mouse)
+    if mouseMT and mouseMT.__index and not getgenv().GatlingMouseHooked then
+        getgenv().GatlingMouseHooked = true
+        local rawIndex = mouseMT.__index
+        
+        setreadonly(mouseMT, false)
+        mouseMT.__index = newcclosure(function(self, key)
+            if autoShootEnabled and currentTarget and currentTarget.Parent and self == mouse and key == "Hit" then
+                local hitBox = currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+                if hitBox then
+                    -- Target center body offset
+                    return CFrame.new(hitBox.Position + Vector3.new(0, 1.8, 0))
+                end
+            end
+            return rawIndex(self, key)
+        end)
+        setreadonly(mouseMT, true)
+        print("[TDS] Mouse Hook active for Aim Lock.")
+    end
+end)
+
 -- Thread loop for firing mechanism and target tracking
 task.spawn(function()
     local TowerReplicator = require(ReplicatedStorage.Client.Modules.Replicators.TowerReplicator)
@@ -195,37 +222,34 @@ task.spawn(function()
             if myGatlingModel then
                 local rep = TowerReplicator.getTowerByModel(myGatlingModel)
                 if rep then
-                    -- Force gạt các biến trạng thái bắn của tháp cục bộ để kích hoạt nòng súng xoay và xả đạn
-                    rep._firing = true
-                    rep._allowedToFire = true
-                    rep._FPSEnabled = true
-                    rep.CanFire = true
-                    
-                    -- Tự động Reload nếu hết đạn
-                    if rep.Ammo and rep.Ammo <= 0 and not rep.Reloading then
-                        print("[TDS] AutoShoot: Ammo empty. Triggering Reload...")
-                        pcall(function()
-                            rep:FireServer("Reload")
-                        end)
-                        task.wait(2.5) -- Chờ nạp đạn xong
-                    end
-                    
+                    -- Đọc danh sách mục tiêu
                     local targetsList = getTargets(targetMode)
+                    
                     if #targetsList > 0 then
+                        -- Cập nhật mục tiêu cho Mouse Hook xoay đầu súng visual
+                        currentTarget = targetsList[1].Instance
+                        
+                        -- Đồng bộ các trạng thái bắn cục bộ
+                        rep._firing = true
+                        rep._allowedToFire = true
+                        rep._FPSEnabled = true
+                        rep.CanFire = true
+                        
+                        -- Tự động Reload nếu hết đạn
+                        if rep.Ammo and rep.Ammo <= 0 and not rep.Reloading then
+                            pcall(function()
+                                rep:FireServer("Reload")
+                            end)
+                            task.wait(2.2) -- Chờ nạp đạn
+                        end
+                        
                         local count = 0
                         for _, target in ipairs(targetsList) do
                             if count >= multiTargetLimit then break end
                             
-                            local targetPos = target.Position + Vector3.new(0, 1.5, 0)
+                            local targetPos = target.Position + Vector3.new(0, 1.8, 0)
                             local targetPosStr = tostring(targetPos)
                             local timestamp = workspace:GetServerTimeNow()
-                            
-                            -- Cập nhật góc hướng ngắm cục bộ (Visual CFrame rotation) để đầu súng xoay
-                            if rep._cframeData then
-                                pcall(function()
-                                    rep._cframeData.Position = targetPos
-                                end)
-                            end
                             
                             -- Lấy điểm đầu nòng súng để vẽ tia đạn bay (VFX)
                             local barrel = myGatlingModel:FindFirstChild("Weapon") 
@@ -244,12 +268,12 @@ task.spawn(function()
                                     rep:Bullet({
                                         Start = startPos,
                                         End = targetPos,
-                                        Spread = 0.5
+                                        Spread = 0.3
                                     })
                                 end
                             end)
                             
-                            -- 3. Gửi yêu cầu bắn đạn thực tế lên Server qua kênh mã hóa
+                            -- 3. Gửi yêu cầu bắn đạn lên Server
                             pcall(function()
                                 rep:FireServer("Fire", targetPosStr, seqNum, timestamp)
                             end)
@@ -257,20 +281,29 @@ task.spawn(function()
                             seqNum = seqNum + 1
                             count = count + 1
                         end
+                    else
+                        currentTarget = nil
+                        rep._firing = false
                     end
                 else
+                    currentTarget = nil
                     if tick() - lastWarn > 10 then
                         warn("[TDS] AutoShoot: TowerReplicator not found for Gatling Gun.")
                         lastWarn = tick()
                     end
                 end
             else
+                currentTarget = nil
                 if tick() - lastWarn > 10 then
-                    warn("[TDS] AutoShoot: No Gatling Gun found on map. Waiting for placement.")
+                    warn("[TDS] AutoShoot: No Gatling Gun found on map.")
                     lastWarn = tick()
                 end
             end
+        else
+            currentTarget = nil
         end
+        
+        -- Nhịp xả đạn cực nhanh theo slider BPS
         task.wait(1 / bpsValue)
     end
     print("[TDS] Gatling Gun Old Thread (ID: " .. currentScriptID .. ") Stopped.")
