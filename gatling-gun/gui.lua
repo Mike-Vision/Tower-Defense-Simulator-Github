@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Auto-Reload Version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Decompiled Logic Method)
 
 local HttpService = game:GetService("HttpService")
 
@@ -98,15 +98,6 @@ local function getMyGatlingGun()
     return nil
 end
 
--- Dynamic connection getter to prevent infinite yield
-local function getGatlingNetwork()
-    local network = ReplicatedStorage:FindFirstChild("Network")
-    if network then
-        return network:FindFirstChild("GatlingGun")
-    end
-    return nil
-end
-
 Tab:CreateToggle({
    Name = "Auto Shoot",
    Info = "Automatically target and fire the Gatling Gun",
@@ -120,7 +111,6 @@ Tab:CreateToggle({
       task.spawn(function()
           local myGatling = getMyGatlingGun()
           if myGatling then
-              -- 1. Activate/Deactivate FPS Mode on Server
               pcall(function()
                   rf:InvokeServer("Troops", "Abilities", "Activate", { 
                       Troop = myGatling, 
@@ -129,18 +119,6 @@ Tab:CreateToggle({
                   })
               end)
               print("[TDS] AutoShoot: Toggled FPS Mode to " .. tostring(Value))
-              
-              -- 2. If enabling, immediately call Reload to ensure full ammo at start
-              if Value then
-                  local gatlingNetwork = getGatlingNetwork()
-                  local reReload = gatlingNetwork and gatlingNetwork:FindFirstChild("RE:Reload")
-                  if reReload then
-                      pcall(function()
-                          reReload:FireServer()
-                      end)
-                      print("[TDS] AutoShoot: Triggered initial reload for safety.")
-                  end
-              end
           end
       end)
    end,
@@ -207,70 +185,75 @@ end
 
 -- Thread loop for firing mechanism and target tracking
 task.spawn(function()
+    local TowerReplicator = require(ReplicatedStorage.Client.Modules.Replicators.TowerReplicator)
     local seqNum = 1
     local lastWarn = 0
     
-    -- Track shots to handle reloading (typical Gatling has 100 max ammo at level 0)
-    local shotCount = 0
-    local maxAmmo = 100 
-    
     while getgenv().GatlingScriptID == currentScriptID do
         if autoShootEnabled then
-            local myGatling = getMyGatlingGun()
-            if myGatling then
-                local gatlingNetwork = getGatlingNetwork()
-                if gatlingNetwork then
-                    local reFire = gatlingNetwork:FindFirstChild("RE:Fire")
-                    local ureAim = gatlingNetwork:FindFirstChild("URE:ReplicateAimPosition")
-                    local reReload = gatlingNetwork:FindFirstChild("RE:Reload")
-                    
-                    -- Check if we need to reload
-                    if shotCount >= maxAmmo and reReload then
-                        print("[TDS] AutoShoot: Magazine empty! Reloading...")
+            local myGatlingModel = getMyGatlingGun()
+            if myGatlingModel then
+                local rep = TowerReplicator.getTowerByModel(myGatlingModel)
+                if rep then
+                    -- 1. Check if súng hết đạn và cần Reload
+                    if rep.Ammo and rep.Ammo <= 0 and not rep.Reloading then
+                        print("[TDS] AutoShoot: Ammo empty. Triggering Reload...")
                         pcall(function()
-                            reReload:FireServer()
+                            rep:FireServer("Reload")
                         end)
-                        shotCount = 0
-                        task.wait(2.5) -- Wait for reload animation/cooldown
+                        task.wait(2.5) -- Chờ nạp đạn xong
                     end
                     
-                    if reFire and ureAim then
-                        local targetsList = getTargets(targetMode)
-                        
-                        if #targetsList > 0 then
-                            local count = 0
-                            for _, target in ipairs(targetsList) do
-                                if count >= multiTargetLimit then break end
-                                
-                                local targetPos = target.Position + Vector3.new(0, 1.5, 0)
-                                local targetPosStr = tostring(targetPos)
-                                local timestamp = workspace:GetServerTimeNow()
-                                
-                                -- 1. Replicate aim direction for nòng súng
-                                pcall(function()
-                                    ureAim:FireServer(targetPosStr)
-                                end)
-                                
-                                -- 2. Fire bullet event
-                                pcall(function()
-                                    reFire:FireServer(targetPosStr, seqNum, timestamp)
-                                end)
-                                
-                                seqNum = seqNum + 1
-                                shotCount = shotCount + 1
-                                count = count + 1
-                            end
+                    local targetsList = getTargets(targetMode)
+                    if #targetsList > 0 then
+                        local count = 0
+                        for _, target in ipairs(targetsList) do
+                            if count >= multiTargetLimit then break end
+                            
+                            local targetPos = target.Position + Vector3.new(0, 1.5, 0)
+                            local targetPosStr = tostring(targetPos)
+                            local timestamp = workspace:GetServerTimeNow()
+                            
+                            -- Lấy điểm đầu nòng súng để vẽ tia đạn bay (VFX)
+                            local barrel = myGatlingModel:FindFirstChild("Weapon") 
+                                and myGatlingModel.Weapon:FindFirstChild("Main") 
+                                and myGatlingModel.Weapon.Main:FindFirstChild("Barrel")
+                            local startPos = barrel and barrel.Position or (myGatlingModel.PrimaryPart and myGatlingModel.PrimaryPart.Position + Vector3.new(0, 5, 0)) or targetPos
+                            
+                            -- 2. Đồng bộ hướng ngắm xoay nòng súng cục bộ & server
+                            pcall(function()
+                                rep:FireServer("ReplicateAimPosition", targetPosStr)
+                            end)
+                            
+                            -- 3. Tạo hiệu ứng đạn bay cục bộ (Visual Bullet)
+                            pcall(function()
+                                if rep.Bullet then
+                                    rep:Bullet({
+                                        Start = startPos,
+                                        End = targetPos,
+                                        Spread = 0.5
+                                    })
+                                end
+                            end)
+                            
+                            -- 4. Gửi yêu cầu bắn đạn lên Server qua kênh mã hóa gốc của tháp
+                            pcall(function()
+                                rep:FireServer("Fire", targetPosStr, seqNum, timestamp)
+                            end)
+                            
+                            seqNum = seqNum + 1
+                            count = count + 1
                         end
                     end
                 else
                     if tick() - lastWarn > 10 then
-                        warn("[TDS] AutoShoot: GatlingGun network folder not found. Waiting for placement.")
+                        warn("[TDS] AutoShoot: TowerReplicator not found for Gatling Gun.")
                         lastWarn = tick()
                     end
                 end
             else
                 if tick() - lastWarn > 10 then
-                    warn("[TDS] AutoShoot: No active Gatling Gun found on map. Waiting for placement.")
+                    warn("[TDS] AutoShoot: No Gatling Gun found on map. Waiting for placement.")
                     lastWarn = tick()
                 end
             end
