@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Optimized Targeting & Firing)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Silent Aim / Mouse Hook version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -46,7 +46,6 @@ Tab:CreateSlider({
    Flag = "BPS_Slider",
    Callback = function(Value)
       bpsValue = Value
-      print("[TDS] Gatling BPS updated to: " .. tostring(Value))
    end,
 })
 
@@ -60,7 +59,6 @@ Tab:CreateSlider({
    Flag = "MultiTarget_Slider",
    Callback = function(Value)
       multiTargetLimit = Value
-      print("[TDS] Gatling Multi Target updated to: " .. tostring(Value))
    end,
 })
 
@@ -71,10 +69,8 @@ Tab:CreateDropdown({
    MultipleOptions = false,
    Flag = "Targeting_Dropdown",
    Callback = function(Option)
-      -- Handle Rayfield dropdown option return types (table or string)
       local selected = type(Option) == "table" and Option[1] or Option
       targetMode = selected or "First"
-      print("[TDS] Gatling Target Mode updated to: " .. tostring(targetMode))
    end,
 })
 
@@ -83,11 +79,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local npcsFolder = workspace:WaitForChild("NPCs")
 local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
 local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators")
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+local mouse = localPlayer:GetMouse()
 
 -- Helper to find active Gatling Gun tower owned by player
 local function getMyGatlingGun()
     for _, tower in ipairs(workspace.Towers:GetChildren()) do
-        local isOwner = tower:FindFirstChild("Owner") and tower.Owner.Value == game.Players.LocalPlayer.UserId
+        local isOwner = tower:FindFirstChild("Owner") and tower.Owner.Value == localPlayer.UserId
         if isOwner and (tower.Name == "Gatling Gun" or tower.Name == "Default") then
             return tower
         end
@@ -157,7 +156,6 @@ local function getTargets(mode)
         local hpPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Hitbox")
         if hpPart then
             local hp, progress = getNPCState(npc)
-            -- If health state is zero or uninitialized, still include it if it's a valid Actor enemy model
             if hp > 0 or (hp == 0 and progress == 0 and npc.Name == "Actor1Enemy") then
                 table.insert(targets, {
                     Instance = npc,
@@ -186,6 +184,29 @@ local function getTargets(mode)
     return targets
 end
 
+-- Silent Aim (Mouse Hooking)
+-- Overrides Mouse.Hit and Mouse.Target to return the current target's position
+local currentTarget = nil
+
+local rawIndex
+rawIndex = hookmetamethod(game, "__index", function(self, key)
+    if not checkcaller() and autoShootEnabled and currentTarget and currentTarget.Parent then
+        -- Hook LocalPlayer Mouse Hit position
+        if self == mouse and key == "Hit" then
+            local hitBox = currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+            if hitBox then
+                -- Target chest/head height
+                return CFrame.new(hitBox.Position + Vector3.new(0, 1.5, 0))
+            end
+        end
+        -- Hook LocalPlayer Mouse Target instance
+        if self == mouse and key == "Target" then
+            return currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+        end
+    end
+    return rawIndex(self, key)
+end)
+
 -- Dynamic connection getter to prevent infinite yield
 local function getGatlingNetwork()
     local network = ReplicatedStorage:FindFirstChild("Network")
@@ -195,7 +216,7 @@ local function getGatlingNetwork()
     return nil
 end
 
--- Thread loop for firing mechanism
+-- Thread loop for firing mechanism and target tracking
 task.spawn(function()
     local seqNum = 1
     local lastWarn = 0
@@ -210,42 +231,53 @@ task.spawn(function()
                     
                     if reFire and ureAim then
                         local targetsList = getTargets(targetMode)
-                        local count = 0
                         
-                        for _, target in ipairs(targetsList) do
-                            if count >= multiTargetLimit then break end
+                        if #targetsList > 0 then
+                            -- Set the current target for the Mouse Hook to capture
+                            currentTarget = targetsList[1].Instance
                             
-                            -- Aim slightly higher (head/chest level) to make the Gatling model face the target properly
-                            local targetPos = target.Position + Vector3.new(0, 1.5, 0)
-                            local targetPosStr = tostring(targetPos)
-                            local timestamp = workspace:GetServerTimeNow()
-                            
-                            -- 1. Replicate aim direction for nòng súng
-                            pcall(function()
-                                ureAim:FireServer(targetPosStr)
-                            end)
-                            
-                            -- 2. Fire bullet event
-                            pcall(function()
-                                reFire:FireServer(targetPosStr, seqNum, timestamp)
-                            end)
-                            
-                            seqNum = seqNum + 1
-                            count = count + 1
+                            local count = 0
+                            for _, target in ipairs(targetsList) do
+                                if count >= multiTargetLimit then break end
+                                
+                                -- Aim slightly higher (head/chest level)
+                                local targetPos = target.Position + Vector3.new(0, 1.5, 0)
+                                local targetPosStr = tostring(targetPos)
+                                local timestamp = workspace:GetServerTimeNow()
+                                
+                                -- 1. Replicate aim direction to keep server model rotated correctly
+                                pcall(function()
+                                    ureAim:FireServer(targetPosStr)
+                                end)
+                                
+                                -- 2. Call fire bullet remote
+                                pcall(function()
+                                    reFire:FireServer(targetPosStr, seqNum, timestamp)
+                                end)
+                                
+                                seqNum = seqNum + 1
+                                count = count + 1
+                            end
+                        else
+                            currentTarget = nil
                         end
                     end
                 else
+                    currentTarget = nil
                     if tick() - lastWarn > 5 then
                         warn("[TDS] AutoShoot: GatlingGun network folder not found. Make sure to place at least one Gatling Gun!")
                         lastWarn = tick()
                     end
                 end
             else
+                currentTarget = nil
                 if tick() - lastWarn > 5 then
                     warn("[TDS] AutoShoot: No active Gatling Gun found on map. Place a Gatling Gun to start.")
                     lastWarn = tick()
                 end
             end
+        else
+            currentTarget = nil
         end
         task.wait(1 / bpsValue)
     end
