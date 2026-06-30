@@ -24,10 +24,22 @@ if successSha and commitInfo then
 end
 
 -- Load the main automation module
+local loadFunc = loadstring or typeof(loadstring) == "function" and loadstring
+if not loadFunc then
+    getgenv().YBALoaded = nil
+    error("[YBA] Loader: Executor does not support loadstring function!")
+end
+
 local success, result = pcall(function()
-    local url = string.format("https://raw.githubusercontent.com/Mike-vision/Tower-Defense-Simulator-Github/%s/YBA/main.luau", sha)
+    local url = string.format("https://raw.githubusercontent.com/Mike-vision/Tower-Defense-Simulator-Github/%s/YBA/main.luau?t=%s", sha, tostring(tick()))
     local content = game:HttpGet(url)
-    return loadstring(content)()
+    
+    local f, err = loadFunc(content)
+    if not f then
+        error("Syntax error in main.luau: " .. tostring(err))
+    end
+    
+    return f()
 end)
 
 if success then
