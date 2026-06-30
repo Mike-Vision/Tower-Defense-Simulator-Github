@@ -23,21 +23,6 @@ end)
 if success and result then
     getgenv().TDS = result
     print("[TDS] Loader: Library loaded successfully into getgenv().TDS!")
-    
-    -- Check if Gatling Gun GUI env variable is active
-    if getgenv()[".env-gatling"] == true or getgenv().env_gatling == true then
-        task.spawn(function()
-            local gatlingUrl = string.format("https://raw.githubusercontent.com/Mike-vision/Tower-Defense-Simulator-Github/%s/gatling-gun/gui.lua", sha)
-            local okGatling, contentGatling = pcall(game.HttpGet, game, gatlingUrl)
-            if okGatling and contentGatling then
-                loadstring(contentGatling)()
-                print("[TDS] Loader: Gatling Gun GUI loaded successfully!")
-            else
-                warn("[TDS] Loader: Failed to download Gatling Gun GUI: " .. tostring(contentGatling))
-            end
-        end)
-    end
-    
     return result
 else
     warn("[TDS] Loader: Failed to load library from GitHub: " .. tostring(result))
