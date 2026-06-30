@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Flags and formatting optimized)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Callback-driven version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -29,7 +29,13 @@ getgenv().GatlingWindow = Window
 
 local Tab = Window:CreateTab("Gatling Automation", 4483362458) -- Title, ImageID
 
--- UI Elements with Flags
+-- Control variables (Direct callback-driven state)
+local bpsValue = 10
+local multiTargetLimit = 1
+local targetMode = "First"
+local autoShootEnabled = false
+
+-- UI Elements
 Tab:CreateSlider({
    Name = "Bullet Per Second (BPS)",
    Info = "Sets the firing speed (1 - 26)",
@@ -38,7 +44,10 @@ Tab:CreateSlider({
    Suffix = "bullets/s",
    CurrentValue = 10,
    Flag = "BPS_Slider",
-   Callback = function(Value) end,
+   Callback = function(Value)
+      bpsValue = Value
+      print("[TDS] Gatling BPS updated to: " .. tostring(Value))
+   end,
 })
 
 Tab:CreateSlider({
@@ -49,7 +58,10 @@ Tab:CreateSlider({
    Suffix = "targets",
    CurrentValue = 1,
    Flag = "MultiTarget_Slider",
-   Callback = function(Value) end,
+   Callback = function(Value)
+      multiTargetLimit = Value
+      print("[TDS] Gatling Multi Target updated to: " .. tostring(Value))
+   end,
 })
 
 Tab:CreateDropdown({
@@ -58,7 +70,10 @@ Tab:CreateDropdown({
    CurrentValue = "First",
    MultipleOptions = false,
    Flag = "Targeting_Dropdown",
-   Callback = function(Option) end,
+   Callback = function(Option)
+      targetMode = type(Option) == "table" and Option[1] or Option or "First"
+      print("[TDS] Gatling Target Mode updated to: " .. tostring(targetMode))
+   end,
 })
 
 -- Core Targeting & Firing Logic
@@ -89,6 +104,9 @@ Tab:CreateToggle({
    CurrentValue = false,
    Flag = "AutoShoot_Toggle",
    Callback = function(Value)
+      autoShootEnabled = Value
+      print("[TDS] Gatling Auto Shoot toggled to: " .. tostring(Value))
+      
       -- Toggle FPS Mode on server when Auto Shoot status changes
       task.spawn(function()
           local myGatling = getMyGatlingGun()
@@ -180,29 +198,7 @@ task.spawn(function()
     local seqNum = 1
     local lastWarn = 0
     while getgenv().GatlingScriptID == currentScriptID do
-        -- Read values dynamically from Rayfield Flags
-        local autoShoot = false
-        local bps = 10
-        local multiLimit = 1
-        local mode = "First"
-        
-        pcall(function()
-            if Rayfield.Flags["AutoShoot_Toggle"] then
-                autoShoot = Rayfield.Flags["AutoShoot_Toggle"].CurrentValue
-            end
-            if Rayfield.Flags["BPS_Slider"] then
-                bps = Rayfield.Flags["BPS_Slider"].CurrentValue
-            end
-            if Rayfield.Flags["MultiTarget_Slider"] then
-                multiLimit = Rayfield.Flags["MultiTarget_Slider"].CurrentValue
-            end
-            if Rayfield.Flags["Targeting_Dropdown"] then
-                local opt = Rayfield.Flags["Targeting_Dropdown"].CurrentValue
-                mode = type(opt) == "table" and opt[1] or opt or "First"
-            end
-        end)
-        
-        if autoShoot then
+        if autoShootEnabled then
             local myGatling = getMyGatlingGun()
             if myGatling then
                 local gatlingNetwork = getGatlingNetwork()
@@ -211,11 +207,11 @@ task.spawn(function()
                     local ureAim = gatlingNetwork:FindFirstChild("URE:ReplicateAimPosition")
                     
                     if reFire and ureAim then
-                        local targetsList = getTargets(mode)
+                        local targetsList = getTargets(targetMode)
                         local count = 0
                         
                         for _, target in ipairs(targetsList) do
-                            if count >= multiLimit then break end
+                            if count >= multiTargetLimit then break end
                             
                             local targetPos = target.Position
                             -- Roblox standard vector string representation (e.g. "X, Y, Z")
@@ -249,7 +245,7 @@ task.spawn(function()
                 end
             end
         end
-        task.wait(1 / bps)
+        task.wait(1 / bpsValue)
     end
     print("[TDS] Gatling Gun Old Thread (ID: " .. currentScriptID .. ") Stopped.")
 end)
