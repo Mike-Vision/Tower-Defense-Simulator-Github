@@ -1,5 +1,5 @@
 -- gui.lua
--- Completely rewritten Gatling Gun automation UI for TDS (Stable Version)
+-- Synced Cooldown Gatling Gun automation UI for TDS (Stable Damage Version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -38,7 +38,7 @@ local autoShootEnabled = false
 -- UI Elements
 Tab:CreateSlider({
    Name = "Bullet Per Second (BPS)",
-   Info = "Sets the firing speed (1 - 26)",
+   Info = "Fallback firing speed if cooldown is not loaded (1 - 26)",
    Range = {1, 26},
    Increment = 1,
    Suffix = "bullets/s",
@@ -215,7 +215,6 @@ rotateConnection = RunService.Heartbeat:Connect(function()
             local targetHRP = activeTarget:FindFirstChild("HumanoidRootPart") or activeTarget:FindFirstChild("Hitbox")
             if targetHRP then
                 local rotatePart = myGatling.Rotate
-                -- Calculate look CFrame only on Y axis to prevent tipping downward
                 local targetPos = targetHRP.Position
                 local lookCF = CFrame.lookAt(
                     rotatePart.Position, 
@@ -236,12 +235,26 @@ task.spawn(function()
     local lastWarn = 0
     
     while getgenv().GatlingScriptID == currentScriptID do
+        local waitTime = 1 / bpsValue
+        
         if autoShootEnabled then
             local myGatlingModel = getMyGatlingGun()
             if myGatlingModel then
                 local rep = TowerReplicator.getTowerByModel(myGatlingModel)
                 if rep then
-                    -- 1. Tự động Reload nếu hết đạn
+                    -- 1. Đọc Cooldown thực tế từ Replicator để đồng bộ tốc độ bắn (BPS) chính xác nhất
+                    if rep.GetCooldown then
+                        local cd = rep:GetCooldown()
+                        if cd and cd > 0 then
+                            waitTime = cd
+                        end
+                    elseif rep.Cooldown then
+                        if rep.Cooldown > 0 then
+                            waitTime = rep.Cooldown
+                        end
+                    end
+                    
+                    -- 2. Tự động Reload nếu hết đạn
                     if rep.Ammo and rep.Ammo <= 0 and not rep.Reloading then
                         print("[TDS] AutoShoot: Ammo empty. Triggering Reload...")
                         pcall(function()
@@ -264,21 +277,23 @@ task.spawn(function()
                         for _, target in ipairs(targetsList) do
                             if count >= multiTargetLimit then break end
                             
-                            local targetPos = target.Position + Vector3.new(0, 1.8, 0)
+                            -- Nhắm thẳng vào giữa thân quái vật trên máy chủ
+                            local targetPos = target.Position + Vector3.new(0, 1.4, 0)
                             local targetPosStr = tostring(targetPos)
                             local timestamp = workspace:GetServerTimeNow()
                             
-                            -- 2. Đồng bộ hướng ngắm lên Server
-                            pcall(function()
-                                rep:FireServer("ReplicateAimPosition", targetPosStr)
-                            end)
-                            
-                            -- 3. Tạo hiệu ứng đạn bay cục bộ (Visual Bullet)
+                            -- Lấy điểm đầu nòng súng để vẽ tia đạn bay (VFX)
                             local barrel = myGatlingModel:FindFirstChild("Weapon") 
                                 and myGatlingModel.Weapon:FindFirstChild("Main") 
                                 and myGatlingModel.Weapon.Main:FindFirstChild("Barrel")
                             local startPos = barrel and barrel.Position or (myGatlingModel.PrimaryPart and myGatlingModel.PrimaryPart.Position + Vector3.new(0, 5, 0)) or targetPos
                             
+                            -- A. Đồng bộ hướng ngắm lên Server
+                            pcall(function()
+                                rep:FireServer("ReplicateAimPosition", targetPosStr)
+                            end)
+                            
+                            -- B. Tạo hiệu ứng đạn bay cục bộ (Visual Bullet)
                             pcall(function()
                                 if rep.Bullet then
                                     rep:Bullet({
@@ -289,7 +304,7 @@ task.spawn(function()
                                 end
                             end)
                             
-                            -- 4. Gửi yêu cầu bắn đạn lên Server
+                            -- C. Gửi yêu cầu bắn đạn thực tế lên Server để gây sát thương
                             pcall(function()
                                 rep:FireServer("Fire", targetPosStr, seqNum, timestamp)
                             end)
@@ -324,7 +339,7 @@ task.spawn(function()
             activeTarget = nil
         end
         
-        task.wait(1 / bpsValue)
+        task.wait(waitTime)
     end
     
     -- Dọn dẹp liên kết khi luồng bị tắt
