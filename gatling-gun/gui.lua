@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Non-blocking version)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -70,9 +70,6 @@ Tab:CreateToggle({
 -- Core Targeting & Firing Logic
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local npcsFolder = workspace:WaitForChild("NPCs")
-local gatlingNetwork = ReplicatedStorage:WaitForChild("Network"):WaitForChild("GatlingGun")
-local reFire = gatlingNetwork:WaitForChild("RE:Fire")
-local ureAim = gatlingNetwork:WaitForChild("URE:ReplicateAimPosition")
 
 -- Helper to find active Gatling Gun tower owned by player
 local function getMyGatlingGun()
@@ -81,7 +78,6 @@ local function getMyGatlingGun()
             return tower
         end
     end
-    -- Fallback: return the first Gatling Gun if no Owner tag is present
     for _, tower in ipairs(workspace.Towers:GetChildren()) do
         if tower.Name == "Gatling Gun" then
             return tower
@@ -97,7 +93,6 @@ local function getTargets()
         local hpPart = npc:FindFirstChild("HumanoidRootPart")
         local healthVal = npc:FindFirstChild("Health") or npc:FindFirstChild("HealthValue")
         if hpPart and (not healthVal or healthVal.Value > 0) then
-            -- Get path progress if available
             local progress = npc:GetAttribute("Progress") or 0
             table.insert(targets, {
                 Instance = npc,
@@ -108,7 +103,6 @@ local function getTargets()
         end
     end
     
-    -- Sort according to chosen targetMode
     if targetMode == "First" then
         table.sort(targets, function(a, b) return a.Progress > b.Progress end)
     elseif targetMode == "Last" then
@@ -116,7 +110,6 @@ local function getTargets()
     elseif targetMode == "Strongest" then
         table.sort(targets, function(a, b) return a.Health > b.Health end)
     elseif targetMode == "Random" then
-        -- Shuffle list randomly
         local rng = Random.new()
         for i = #targets, 2, -1 do
             local j = rng:NextInteger(1, i)
@@ -127,39 +120,66 @@ local function getTargets()
     return targets
 end
 
+-- Dynamic connection getter to prevent infinite yield
+local function getGatlingNetwork()
+    local network = ReplicatedStorage:FindFirstChild("Network")
+    if network then
+        return network:FindFirstChild("GatlingGun")
+    end
+    return nil
+end
+
 -- Thread loop for firing mechanism
 task.spawn(function()
     local seqNum = 1
+    local lastWarn = 0
     while true do
         if autoShootEnabled then
             local myGatling = getMyGatlingGun()
             if myGatling then
-                local targetsList = getTargets()
-                local count = 0
-                
-                for _, target in ipairs(targetsList) do
-                    if count >= multiTargetLimit then break end
+                local gatlingNetwork = getGatlingNetwork()
+                if gatlingNetwork then
+                    local reFire = gatlingNetwork:FindFirstChild("RE:Fire")
+                    local ureAim = gatlingNetwork:FindFirstChild("URE:ReplicateAimPosition")
                     
-                    local targetPos = target.Position
-                    local targetPosStr = string.format("%f, %f, %f", targetPos.X, targetPos.Y, targetPos.Z)
-                    local timestamp = workspace:GetServerTimeNow()
-                    
-                    -- 1. Replicate aim direction for nòng súng
-                    pcall(function()
-                        ureAim:FireServer(targetPosStr)
-                    end)
-                    
-                    -- 2. Fire bullet event
-                    pcall(function()
-                        reFire:FireServer(targetPosStr, seqNum, timestamp)
-                    end)
-                    
-                    seqNum = seqNum + 1
-                    count = count + 1
+                    if reFire and ureAim then
+                        local targetsList = getTargets()
+                        local count = 0
+                        
+                        for _, target in ipairs(targetsList) do
+                            if count >= multiTargetLimit then break end
+                            
+                            local targetPos = target.Position
+                            local targetPosStr = string.format("%f, %f, %f", targetPos.X, targetPos.Y, targetPos.Z)
+                            local timestamp = workspace:GetServerTimeNow()
+                            
+                            -- 1. Replicate aim direction for nòng súng
+                            pcall(function()
+                                ureAim:FireServer(targetPosStr)
+                            end)
+                            
+                            -- 2. Fire bullet event
+                            pcall(function()
+                                reFire:FireServer(targetPosStr, seqNum, timestamp)
+                            end)
+                            
+                            seqNum = seqNum + 1
+                            count = count + 1
+                        end
+                    end
+                else
+                    if tick() - lastWarn > 5 then
+                        warn("[TDS] AutoShoot: GatlingGun network folder not found. Make sure to place at least one Gatling Gun!")
+                        lastWarn = tick()
+                    end
+                end
+            else
+                if tick() - lastWarn > 5 then
+                    warn("[TDS] AutoShoot: No active Gatling Gun found on map. Place a Gatling Gun to start.")
+                    lastWarn = tick()
                 end
             end
         end
-        -- Sleep rate derived from Bullet Per Second (BPS)
         task.wait(1 / bpsValue)
     end
 end)
