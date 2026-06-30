@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (FPS Activation Included)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Non-blocking and Skin-agnostic version)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -63,14 +63,18 @@ local npcsFolder = workspace:WaitForChild("NPCs")
 local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
 
 -- Helper to find active Gatling Gun tower owned by player
+-- Matches "Gatling Gun", "Default", or any tower that might be the Gatling Gun based on typical structure
 local function getMyGatlingGun()
+    -- 1. Try to find by Owner tag and common names
     for _, tower in ipairs(workspace.Towers:GetChildren()) do
-        if tower.Name == "Gatling Gun" and tower:FindFirstChild("Owner") and tower.Owner.Value == game.Players.LocalPlayer.UserId then
+        local isOwner = tower:FindFirstChild("Owner") and tower.Owner.Value == game.Players.LocalPlayer.UserId
+        if isOwner and (tower.Name == "Gatling Gun" or tower.Name == "Default") then
             return tower
         end
     end
+    -- 2. Fallback to any tower named "Default" or "Gatling Gun"
     for _, tower in ipairs(workspace.Towers:GetChildren()) do
-        if tower.Name == "Gatling Gun" then
+        if tower.Name == "Gatling Gun" or tower.Name == "Default" then
             return tower
         end
     end
