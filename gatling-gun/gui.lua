@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Safe Mouse Metatable Hooking version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Safe Hit-only Metatable Hooking version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -187,33 +187,29 @@ end
 -- Silent Aim (Target Tracking Variable)
 local currentTarget = nil
 
--- Safe Mouse Metatable Hooking
+-- Safe Mouse Metatable Hooking (Only hooking mouse.Hit to prevent script interaction conflicts)
 pcall(function()
     local mouseMT = getrawmetatable(mouse)
     if mouseMT and mouseMT.__index then
         local rawIndex = mouseMT.__index
         
-        -- Hook only if not already hooked by our script
         if not getgenv().GatlingMouseHooked then
             getgenv().GatlingMouseHooked = true
             setreadonly(mouseMT, false)
             
             mouseMT.__index = newcclosure(function(self, key)
-                if autoShootEnabled and currentTarget and currentTarget.Parent then
-                    if key == "Hit" then
-                        local hitBox = currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
-                        if hitBox then
-                            return CFrame.new(hitBox.Position + Vector3.new(0, 1.5, 0))
-                        end
-                    elseif key == "Target" then
-                        return currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+                -- Only override "Hit" property, and do not override "Target" to keep selection UI working flawlessly
+                if autoShootEnabled and currentTarget and currentTarget.Parent and self == mouse and key == "Hit" then
+                    local hitBox = currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
+                    if hitBox then
+                        return CFrame.new(hitBox.Position + Vector3.new(0, 1.5, 0))
                     end
                 end
                 return rawIndex(self, key)
             end)
             
             setreadonly(mouseMT, true)
-            print("[TDS] Safe Mouse Metatable Hooked Successfully!")
+            print("[TDS] Safe Mouse Metatable Hooked Successfully (Hit-Only)!")
         end
     end
 end)
@@ -244,7 +240,6 @@ task.spawn(function()
                         local targetsList = getTargets(targetMode)
                         
                         if #targetsList > 0 then
-                            -- Set the current target for the Mouse Hook
                             currentTarget = targetsList[1].Instance
                             
                             local count = 0
