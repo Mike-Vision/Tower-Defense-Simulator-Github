@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Callback-driven version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Optimized Targeting & Firing)
 
 local HttpService = game:GetService("HttpService")
 
@@ -71,7 +71,9 @@ Tab:CreateDropdown({
    MultipleOptions = false,
    Flag = "Targeting_Dropdown",
    Callback = function(Option)
-      targetMode = type(Option) == "table" and Option[1] or Option or "First"
+      -- Handle Rayfield dropdown option return types (table or string)
+      local selected = type(Option) == "table" and Option[1] or Option
+      targetMode = selected or "First"
       print("[TDS] Gatling Target Mode updated to: " .. tostring(targetMode))
    end,
 })
@@ -155,8 +157,8 @@ local function getTargets(mode)
         local hpPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Hitbox")
         if hpPart then
             local hp, progress = getNPCState(npc)
-            -- If health/progress state couldn't be loaded, default to allowing it
-            if hp > 0 or (hp == 0 and progress == 0) then
+            -- If health state is zero or uninitialized, still include it if it's a valid Actor enemy model
+            if hp > 0 or (hp == 0 and progress == 0 and npc.Name == "Actor1Enemy") then
                 table.insert(targets, {
                     Instance = npc,
                     Position = hpPart.Position,
@@ -213,8 +215,8 @@ task.spawn(function()
                         for _, target in ipairs(targetsList) do
                             if count >= multiTargetLimit then break end
                             
-                            local targetPos = target.Position
-                            -- Roblox standard vector string representation (e.g. "X, Y, Z")
+                            -- Aim slightly higher (head/chest level) to make the Gatling model face the target properly
+                            local targetPos = target.Position + Vector3.new(0, 1.5, 0)
                             local targetPosStr = tostring(targetPos)
                             local timestamp = workspace:GetServerTimeNow()
                             
