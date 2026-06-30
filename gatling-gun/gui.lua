@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Safe Hit-only Metatable Hooking version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Direct Remote Firing - Clean Version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -81,7 +81,6 @@ local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
 local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
-local mouse = localPlayer:GetMouse()
 
 -- Helper to find active Gatling Gun tower owned by player
 local function getMyGatlingGun()
@@ -184,36 +183,6 @@ local function getTargets(mode)
     return targets
 end
 
--- Silent Aim (Target Tracking Variable)
-local currentTarget = nil
-
--- Safe Mouse Metatable Hooking (Only hooking mouse.Hit to prevent script interaction conflicts)
-pcall(function()
-    local mouseMT = getrawmetatable(mouse)
-    if mouseMT and mouseMT.__index then
-        local rawIndex = mouseMT.__index
-        
-        if not getgenv().GatlingMouseHooked then
-            getgenv().GatlingMouseHooked = true
-            setreadonly(mouseMT, false)
-            
-            mouseMT.__index = newcclosure(function(self, key)
-                -- Only override "Hit" property, and do not override "Target" to keep selection UI working flawlessly
-                if autoShootEnabled and currentTarget and currentTarget.Parent and self == mouse and key == "Hit" then
-                    local hitBox = currentTarget:FindFirstChild("Hitbox") or currentTarget:FindFirstChild("HumanoidRootPart")
-                    if hitBox then
-                        return CFrame.new(hitBox.Position + Vector3.new(0, 1.5, 0))
-                    end
-                end
-                return rawIndex(self, key)
-            end)
-            
-            setreadonly(mouseMT, true)
-            print("[TDS] Safe Mouse Metatable Hooked Successfully (Hit-Only)!")
-        end
-    end
-end)
-
 -- Dynamic connection getter to prevent infinite yield
 local function getGatlingNetwork()
     local network = ReplicatedStorage:FindFirstChild("Network")
@@ -240,12 +209,11 @@ task.spawn(function()
                         local targetsList = getTargets(targetMode)
                         
                         if #targetsList > 0 then
-                            currentTarget = targetsList[1].Instance
-                            
                             local count = 0
                             for _, target in ipairs(targetsList) do
                                 if count >= multiTargetLimit then break end
                                 
+                                -- Aim slightly higher (head/chest level) to align the barrel properly
                                 local targetPos = target.Position + Vector3.new(0, 1.5, 0)
                                 local targetPosStr = tostring(targetPos)
                                 local timestamp = workspace:GetServerTimeNow()
@@ -263,26 +231,20 @@ task.spawn(function()
                                 seqNum = seqNum + 1
                                 count = count + 1
                             end
-                        else
-                            currentTarget = nil
                         end
                     end
                 else
-                    currentTarget = nil
-                    if tick() - lastWarn > 5 then
-                        warn("[TDS] AutoShoot: GatlingGun network folder not found. Make sure to place at least one Gatling Gun!")
+                    if tick() - lastWarn > 10 then
+                        warn("[TDS] AutoShoot: GatlingGun network folder not found. Waiting for placement.")
                         lastWarn = tick()
                     end
                 end
             else
-                currentTarget = nil
-                if tick() - lastWarn > 5 then
-                    warn("[TDS] AutoShoot: No active Gatling Gun found on map. Place a Gatling Gun to start.")
+                if tick() - lastWarn > 10 then
+                    warn("[TDS] AutoShoot: No active Gatling Gun found on map. Waiting for placement.")
                     lastWarn = tick()
                 end
             end
-        else
-            currentTarget = nil
         end
         task.wait(1 / bpsValue)
     end
