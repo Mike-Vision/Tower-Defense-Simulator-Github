@@ -1,5 +1,5 @@
 -- gui.lua
--- Rayfield GUI configuration for Gatling Gun automation in TDS (Universal Targeting version)
+-- Rayfield GUI configuration for Gatling Gun automation in TDS (Auto-Reload Version)
 
 local HttpService = game:GetService("HttpService")
 
@@ -98,6 +98,15 @@ local function getMyGatlingGun()
     return nil
 end
 
+-- Dynamic connection getter to prevent infinite yield
+local function getGatlingNetwork()
+    local network = ReplicatedStorage:FindFirstChild("Network")
+    if network then
+        return network:FindFirstChild("GatlingGun")
+    end
+    return nil
+end
+
 Tab:CreateToggle({
    Name = "Auto Shoot",
    Info = "Automatically target and fire the Gatling Gun",
@@ -111,6 +120,7 @@ Tab:CreateToggle({
       task.spawn(function()
           local myGatling = getMyGatlingGun()
           if myGatling then
+              -- 1. Activate/Deactivate FPS Mode on Server
               pcall(function()
                   rf:InvokeServer("Troops", "Abilities", "Activate", { 
                       Troop = myGatling, 
@@ -119,6 +129,18 @@ Tab:CreateToggle({
                   })
               end)
               print("[TDS] AutoShoot: Toggled FPS Mode to " .. tostring(Value))
+              
+              -- 2. If enabling, immediately call Reload to ensure full ammo at start
+              if Value then
+                  local gatlingNetwork = getGatlingNetwork()
+                  local reReload = gatlingNetwork and gatlingNetwork:FindFirstChild("RE:Reload")
+                  if reReload then
+                      pcall(function()
+                          reReload:FireServer()
+                      end)
+                      print("[TDS] AutoShoot: Triggered initial reload for safety.")
+                  end
+              end
           end
       end)
    end,
@@ -152,11 +174,9 @@ end
 local function getTargets(mode)
     local targets = {}
     for _, npc in ipairs(npcsFolder:GetChildren()) do
-        -- Matches any NPC model that has physical parts, avoiding marker objects like "Red" or "Blue"
         local hpPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Hitbox")
         if hpPart and npc.Name ~= "Red" and npc.Name ~= "Blue" then
             local hp, progress = getNPCState(npc)
-            -- Allow targeting if health is active or if health is not loaded yet (fallback)
             if hp > 0 or (hp == 0 and progress == 0) then
                 table.insert(targets, {
                     Instance = npc,
@@ -185,19 +205,15 @@ local function getTargets(mode)
     return targets
 end
 
--- Dynamic connection getter to prevent infinite yield
-local function getGatlingNetwork()
-    local network = ReplicatedStorage:FindFirstChild("Network")
-    if network then
-        return network:FindFirstChild("GatlingGun")
-    end
-    return nil
-end
-
 -- Thread loop for firing mechanism and target tracking
 task.spawn(function()
     local seqNum = 1
     local lastWarn = 0
+    
+    -- Track shots to handle reloading (typical Gatling has 100 max ammo at level 0)
+    local shotCount = 0
+    local maxAmmo = 100 
+    
     while getgenv().GatlingScriptID == currentScriptID do
         if autoShootEnabled then
             local myGatling = getMyGatlingGun()
@@ -206,6 +222,17 @@ task.spawn(function()
                 if gatlingNetwork then
                     local reFire = gatlingNetwork:FindFirstChild("RE:Fire")
                     local ureAim = gatlingNetwork:FindFirstChild("URE:ReplicateAimPosition")
+                    local reReload = gatlingNetwork:FindFirstChild("RE:Reload")
+                    
+                    -- Check if we need to reload
+                    if shotCount >= maxAmmo and reReload then
+                        print("[TDS] AutoShoot: Magazine empty! Reloading...")
+                        pcall(function()
+                            reReload:FireServer()
+                        end)
+                        shotCount = 0
+                        task.wait(2.5) -- Wait for reload animation/cooldown
+                    end
                     
                     if reFire and ureAim then
                         local targetsList = getTargets(targetMode)
@@ -230,6 +257,7 @@ task.spawn(function()
                                 end)
                                 
                                 seqNum = seqNum + 1
+                                shotCount = shotCount + 1
                                 count = count + 1
                             end
                         end
